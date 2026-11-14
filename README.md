@@ -155,6 +155,16 @@ The goal of `macIV` is a faithful, high-performance native Mac experience: authe
   `~/Library/Application Support/gtaiv/drive_c/Documents and Settings/Player/My Documents/Rockstar Games/GTA IV/User Music`
 - Go to **Pause Menu → Audio → Complete Scan** in-game, and your custom tracks will play on **Independence FM** with authentic DJ banter, radio commentary, and commercial breaks.
 
+### 💾 Savegame Compatibility & Auto-Repair
+- **Seamless Save Transfers**: Easily transfer existing PC saves, converted saves (e.g. from GTASnP), or downgraded saves to `macIV`.
+- **Automatic CRC & Size Repair on Launch**: Fixes the infamous *"Load failed, check your hard drive and try again"* error. `macIV` automatically validates, recalculates CRC32 checksums, updates header sizes, and appends missing XLive container footers for any save placed in your save directory:
+  `~/Library/Application Support/gtaiv/drive_c/Documents and Settings/Player/Local Settings/Application Data/Rockstar Games/GTA IV/savegames/user_ee000000deadc0de`
+- **Engine-Level Check Bypass (ZolikaPatch Parity)**: Native engine hooks bypass strict CRC32 and file-size equality gates, allowing modified or transferred save files to load effortlessly.
+- **Standalone Save Tool (`fix_save.py`)**: Includes `tools/fix_save.py` (and bundled in the `.app`) to inspect, verify, back up (`.bak`), and batch-repair save files directly from Terminal:
+  ```sh
+  python3 tools/fix_save.py [path/to/SGTA4xx]
+  ```
+
 ### 🍎 macOS Integration
 - **Game Mode Automatic Activation**: Tagged with official game metadata (`LSApplicationCategoryType: public.app-category.games`). macOS automatically enables **Game Mode** in fullscreen, prioritizing CPU and GPU cores and doubling Bluetooth sampling rates for wireless controllers.
 - **Self-contained bundle**: All game files are baked into `Contents/Resources/GameData/`. Moving the `.app` moves the entire game without leaving scattered dependencies.

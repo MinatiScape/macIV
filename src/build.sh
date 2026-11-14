@@ -12,7 +12,7 @@ echo "==> Building macIV..."
 
 # 1. Compile native launcher
 echo "--> Compiling native launcher (macIV)..."
-clang -O3 -arch arm64 -Wall -Wextra -framework CoreFoundation "$SCRIPT_DIR/macIV.c" -o "$SCRIPT_DIR/macIV"
+clang -O3 -arch arm64 -Wall -Wextra -framework CoreFoundation -lz "$SCRIPT_DIR/macIV.c" -o "$SCRIPT_DIR/macIV"
 
 # 2. Build Retina icon if not present
 ICON_PATH="$SCRIPT_DIR/macIV.icns"
@@ -86,17 +86,115 @@ cp -R "$KIT_SOURCE/lib" "$APP_DIR/Contents/Resources/kit/"
 cp -R "$KIT_SOURCE/src" "$APP_DIR/Contents/Resources/kit/"
 cp "$KIT_SOURCE/recipe.json" "$APP_DIR/Contents/Resources/kit/"
 
+# Apply Complete Edition script & savegame compatibility patches to kit
+echo "--> Applying engine compatibility hooks (CE phone fix, savegame CRC32/size bypass)..."
+MANIFEST="$APP_DIR/Contents/Resources/kit/manifest/gtaiv.manifest"
+EPISODES_CPP="$APP_DIR/Contents/Resources/kit/src/episodes.cpp"
+COMMUNITY_CPP="$APP_DIR/Contents/Resources/kit/src/community_fixes.cpp"
+
+if [ -f "$MANIFEST" ]; then
+    if ! grep -q "008AE060" "$MANIFEST"; then
+        echo "replace 008AE060 RegisterNatives   # the Complete Edition scripts' multiplayer native, answered 0 (SCRT70 without it)" >> "$MANIFEST"
+    fi
+    if ! grep -q "0061EDB3" "$MANIFEST"; then
+        cat << 'EOF' >> "$MANIFEST"
+hook 0061EDB3 0061EDB5   # savegame: bypass CRC32 check
+hook 0085B189 0085B18B   # savegame: bypass file size check against header
+hook 0085B450 0085B453   # savegame: bypass total bytes read check
+EOF
+    fi
+fi
+
+if [ -f "$EPISODES_CPP" ]; then
+    python3 - "$EPISODES_CPP" << 'EOF'
+import sys
+path = sys.argv[1]
+with open(path, 'r') as f:
+    c = f.read()
+if "f_008AE060" not in c:
+    c = c.replace('void f_0085A5F0_lifted(Ctx& c);', 'void f_0085A5F0_lifted(Ctx& c);\nvoid f_008AE060_lifted(Ctx& c);')
+    hook = '''
+void f_008AE060(Ctx& c) {
+  constexpr uint32_t kMultiplayerNative = 0x2C89A1F9;
+  constexpr gaddr kIsXbox360Version = 0x00B0EA50;
+  constexpr gaddr kRegisterNative = 0x00626B40;
+  f_008AE060_lifted(c);
+  if (!(CallGuest(c, kRegisterNative, {kMultiplayerNative, kIsXbox360Version}) & 0xFF))
+    WarnF("gtaiv: natives: %08X not added\\n", kMultiplayerNative);
+}
+
+}  // namespace recomp::gen'''
+    c = c.replace('}  // namespace recomp::gen', hook)
+    with open(path, 'w') as f:
+        f.write(c)
+EOF
+fi
+
+if [ -f "$COMMUNITY_CPP" ]; then
+    python3 - "$COMMUNITY_CPP" << 'EOF'
+import sys
+path = sys.argv[1]
+with open(path, 'r') as f:
+    c = f.read()
+if "hook_0061EDB3" not in c:
+    hooks = '''
+// Savegame compatibility hooks: allow converted (GTASnP), downgraded, or transferred save files
+void hook_0061EDB3(Ctx& c) {
+  static const bool on = OptionOn("GTAIV_ALLOW_CONVERTED_SAVES", true);
+  if (on) {
+    CmpFlags<1>(c, 0, 0);
+  } else {
+    CmpFlags<1>(c, c.ebx & 0xFF, Rd8(c.eax));
+  }
+}
+
+void hook_0085B189(Ctx& c) {
+  static const bool on = OptionOn("GTAIV_ALLOW_CONVERTED_SAVES", true);
+  if (on) {
+    CmpFlags<1>(c, 1, 0);
+  } else {
+    CmpFlags<1>(c, c.eax & 0xFF, c.ebx & 0xFF);
+  }
+}
+
+void hook_0085B450(Ctx& c) {
+  static const bool on = OptionOn("GTAIV_ALLOW_CONVERTED_SAVES", true);
+  if (on) {
+    CmpFlags<4>(c, 0, 0);
+  } else {
+    CmpFlags<4>(c, c.edx, Rd32(c.eax + 4));
+  }
+}
+
+}  // namespace recomp::gen'''
+    idx = c.rfind('}  // namespace recomp::gen')
+    if idx != -1:
+        c = c[:idx] + hooks + c[idx+len('}  // namespace recomp::gen'):]
+        with open(path, 'w') as f:
+            f.write(c)
+EOF
+fi
+
 # Copy Builder app binary for headless / GUI builds
 mkdir -p "$APP_DIR/Contents/Resources/builder"
 cp "$EXTRACT_DIR/Liberty Pro Max Builder.app/Contents/MacOS/Builder" "$APP_DIR/Contents/Resources/builder/Builder"
 
-# Copy launcher and icon
+# Copy launcher, icon, and utility tools
 cp "$SCRIPT_DIR/macIV" "$APP_DIR/Contents/MacOS/macIV"
 cp "$ICON_PATH" "$APP_DIR/Contents/Resources/macIV.icns"
 if [ -f "$SCRIPT_DIR/ce_to_1080.patch" ]; then
     echo "--> Bundling Complete Edition delta patch & downgrader..."
     cp "$SCRIPT_DIR/ce_to_1080.patch" "$APP_DIR/Contents/Resources/ce_to_1080.patch"
     cp "$SCRIPT_DIR/downgrade.sh" "$APP_DIR/Contents/Resources/downgrade.sh"
+fi
+if [ -f "$SCRIPT_DIR/fix_save.py" ]; then
+    echo "--> Bundling savegame repair tool..."
+    cp "$SCRIPT_DIR/fix_save.py" "$APP_DIR/Contents/Resources/fix_save.py"
+    chmod +x "$APP_DIR/Contents/Resources/fix_save.py"
+elif [ -f "$ROOT_DIR/tools/fix_save.py" ]; then
+    echo "--> Bundling savegame repair tool..."
+    cp "$ROOT_DIR/tools/fix_save.py" "$APP_DIR/Contents/Resources/fix_save.py"
+    chmod +x "$APP_DIR/Contents/Resources/fix_save.py"
 fi
 chmod +x "$APP_DIR/Contents/MacOS/macIV"
 

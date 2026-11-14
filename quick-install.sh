@@ -423,6 +423,66 @@ void f_008AE060(Ctx& c) {
 EOF
 fi
 
+# Apply savegame compatibility patch (CRC32 and file size check bypass for converted/transferred saves)
+COMMUNITY_CPP="$BUILDER_APP/Contents/Resources/kit/src/community_fixes.cpp"
+
+if [ -f "$BUILDER_ZIP" ] && [ -f "$COMMUNITY_CPP" ]; then
+	unzip -p "$BUILDER_ZIP" "Liberty Pro Max Builder.app/Contents/Resources/kit/src/community_fixes.cpp" > "$COMMUNITY_CPP" 2>/dev/null || true
+fi
+
+if [ -f "$MANIFEST" ] && ! grep -q "0061EDB3" "$MANIFEST"; then
+	cat << 'EOF' >> "$MANIFEST"
+hook 0061EDB3 0061EDB5   # savegame: bypass CRC32 check
+hook 0085B189 0085B18B   # savegame: bypass file size check against header
+hook 0085B450 0085B453   # savegame: bypass total bytes read check
+EOF
+fi
+
+if [ -f "$COMMUNITY_CPP" ]; then
+	python3 - "$COMMUNITY_CPP" << 'EOF'
+import sys
+path = sys.argv[1]
+with open(path, 'r') as f:
+    c = f.read()
+if "hook_0061EDB3" not in c:
+    hooks = '''
+// Savegame compatibility hooks: allow converted (GTASnP), downgraded, or transferred save files
+void hook_0061EDB3(Ctx& c) {
+  static const bool on = OptionOn("GTAIV_ALLOW_CONVERTED_SAVES", true);
+  if (on) {
+    CmpFlags<1>(c, 0, 0);
+  } else {
+    CmpFlags<1>(c, c.ebx & 0xFF, Rd8(c.eax));
+  }
+}
+
+void hook_0085B189(Ctx& c) {
+  static const bool on = OptionOn("GTAIV_ALLOW_CONVERTED_SAVES", true);
+  if (on) {
+    CmpFlags<1>(c, 1, 0);
+  } else {
+    CmpFlags<1>(c, c.eax & 0xFF, c.ebx & 0xFF);
+  }
+}
+
+void hook_0085B450(Ctx& c) {
+  static const bool on = OptionOn("GTAIV_ALLOW_CONVERTED_SAVES", true);
+  if (on) {
+    CmpFlags<4>(c, 0, 0);
+  } else {
+    CmpFlags<4>(c, c.edx, Rd32(c.eax + 4));
+  }
+}
+
+}  // namespace recomp::gen'''
+    idx = c.rfind('}  // namespace recomp::gen')
+    if idx != -1:
+        c = c[:idx] + hooks + c[idx+len('}  // namespace recomp::gen'):]
+        with open(path, 'w') as f:
+            f.write(c)
+EOF
+fi
+
 # ---------------------------------------------------------------------------
 # Step 4: Translating & compiling native game engine
 # ---------------------------------------------------------------------------
@@ -527,8 +587,18 @@ else
 	else
 		curl -fsSL "$RAW_BASE/src/macIV.c" -o "$MACIV_C"
 	fi
-	clang -O3 -arch arm64 -framework CoreFoundation "$MACIV_C" -o "$APP/Contents/MacOS/macIV"
+	clang -O3 -arch arm64 -framework CoreFoundation -lz "$MACIV_C" -o "$APP/Contents/MacOS/macIV"
 fi
+
+# Bundle savegame repair tool
+if [ -f "$SCRIPT_DIR/tools/fix_save.py" ]; then
+	cp "$SCRIPT_DIR/tools/fix_save.py" "$APP/Contents/Resources/fix_save.py"
+elif [ -f "$SCRIPT_DIR/src/fix_save.py" ]; then
+	cp "$SCRIPT_DIR/src/fix_save.py" "$APP/Contents/Resources/fix_save.py"
+else
+	curl -fsSL "$RAW_BASE/tools/fix_save.py" -o "$APP/Contents/Resources/fix_save.py" 2>/dev/null || true
+fi
+chmod +x "$APP/Contents/Resources/fix_save.py" 2>/dev/null || true
 
 if [ -f "$SCRIPT_DIR/src/macIV.icns" ]; then
 	cp "$SCRIPT_DIR/src/macIV.icns" "$APP/Contents/Resources/macIV.icns"
