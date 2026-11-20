@@ -642,6 +642,8 @@ fi
 [ -d "$BUILT_APP" ] || die "expected built app not found in $TMP or /Applications"
 
 mv "$BUILT_APP" "$APP"
+mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/Resources"
 
 # Inject our native launcher & metadata
 RAW_BASE="https://raw.githubusercontent.com/tanmayisdumb/macIV/main"
@@ -678,7 +680,8 @@ fi
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$APP/Contents/Info.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$APP/Contents/Info.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable macIV" "$APP/Contents/Info.plist" 2>/dev/null || true
-/usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string macIV" "$APP/Contents/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile macIV" "$APP/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile macIV" "$APP/Contents/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string macIV" "$APP/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Set :CFBundleIconName macIV" "$APP/Contents/Info.plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string macIV" "$APP/Contents/Info.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :LSApplicationCategoryType string public.app-category.games" "$APP/Contents/Info.plist" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
@@ -785,6 +788,8 @@ mkdir -p "$DL"
 if [ "$WANT_DMG" = no ]; then
 	rm -rf "$DL/$APP_NAME.app"
 	mv "$APP" "$DL/$APP_NAME.app"
+	touch "$DL/$APP_NAME.app"
+	/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DL/$APP_NAME.app" 2>/dev/null || true
 	ok "Placed $APP_NAME.app in $DL"
 	outro "$DL/$APP_NAME.app is ready." \
 		"Drag it into Applications (or double-click it) to play."
