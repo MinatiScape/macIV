@@ -20,6 +20,8 @@ SIGNTOOL_URL="https://raw.githubusercontent.com/tanmayisdumb/macIV/main/signtool
 BUILDER_URL="https://github.com/Awis13/liberty-pro-max/releases/download/v0.4.1-beta/Liberty.Pro.Max.Builder.zip"
 BUILDER_SHA256="80cd1bfddc1b899cff6030ab511dca01a05cd736882322cb46ce7ee816d64bb4"
 EXPECTED_EXE_SHA256="3d90e7c516fa450ca002e5031e62c0f66b404590f33e6cc9793b0da4fffbfd0f"
+STEAM_CE_SHA256="08759a5516f9837920ea504436236bbab89d0826a8e4d04ff106345177b5345d"
+LEGACY_1070_SHA256="ab21c0d90d2ca1c697785aca9dcf44635e1f8d48aa0df1d737e9190bddf0cb4c"
 
 DL="$HOME/Downloads"
 APP_NAME="Grand Theft Auto IV"
@@ -322,8 +324,10 @@ GDATA="$APP/Contents/Resources/GameData"
 # Verify GTAIV.exe checksum and auto-apply clean 1.0.8.0 patch if needed
 PATCHED_EXE=""
 EXE_SHA="$(shasum -a 256 "$ASSET_SRC/GTAIV.exe" | awk '{print $1}')"
-if [ "$EXE_SHA" != "$EXPECTED_EXE_SHA256" ]; then
-	printf '\n%s⚠ Notice:%s Non-1.0.8.0 GTAIV.exe detected (%s)\n' "$GOLD" "$RESET" "$EXE_SHA"
+if [ "$EXE_SHA" = "$EXPECTED_EXE_SHA256" ]; then
+	ok "Detected clean Rockstar v1.0.8.0 executable (SHA-256: $EXPECTED_EXE_SHA256)"
+elif [ "$EXE_SHA" = "$STEAM_CE_SHA256" ]; then
+	printf '\n%s⚠ Notice:%s Steam Complete Edition (v1.2.0.x) detected\n' "$GOLD" "$RESET"
 	printf '  %sAuto-converting Complete Edition to clean Rockstar v1.0.8.0 via binary delta patch...%s\n' "$CYAN" "$RESET"
 	PATCHED_EXE="$TMP/GTAIV_1080.exe"
 	PATCH_FILE=""
@@ -339,6 +343,17 @@ if [ "$EXE_SHA" != "$EXPECTED_EXE_SHA256" ]; then
 	PATCHED_SHA="$(shasum -a 256 "$PATCHED_EXE" | awk '{print $1}')"
 	[ "$PATCHED_SHA" = "$EXPECTED_EXE_SHA256" ] || die "Compatibility patch verification failed (got $PATCHED_SHA, expected $EXPECTED_EXE_SHA256)"
 	ok "Prepared clean v1.0.8.0 executable (SHA-256: $EXPECTED_EXE_SHA256)"
+elif [ "$EXE_SHA" = "$LEGACY_1070_SHA256" ]; then
+	die "detected GTA IV v1.0.7.0 (SHA-256: $EXE_SHA)" \
+		"macIV requires official Rockstar version 1.0.8.0." \
+		"The automatic delta patch converts modern Steam Complete Edition (v1.2.0.x)." \
+		"To fix this:" \
+		"  • If you own GTA IV on Steam: Right-click GTA IV in Steam -> Properties -> Installed Files -> Verify integrity of game files." \
+		"  • If you have a retail/standalone copy: Update to v1.0.8.0 using Rockstar's official Title Update 8 (GTAIV_Patch_8.exe)."
+else
+	die "unrecognized GTAIV.exe version (SHA-256: $EXE_SHA)" \
+		"macIV requires clean Rockstar v1.0.8.0 or vanilla Steam Complete Edition (v1.2.0.x)." \
+		"If your copy was modified by third-party downgraders or cracks, please restore vanilla files."
 fi
 
 # ---------------------------------------------------------------------------
@@ -488,7 +503,19 @@ fi
 # ---------------------------------------------------------------------------
 step "Translating & compiling native game engine"
 
+# Check available disk space (recompilation, LTO bitcode, and assets require ~25-30 GB free)
+FREE_DISK_GB="$(df -g "$TMP" 2>/dev/null | awk 'NR==2 {print $4}' || echo 0)"
+if [ "$FREE_DISK_GB" -gt 0 ] && [ "$FREE_DISK_GB" -lt 25 ]; then
+	die "insufficient free disk space ($FREE_DISK_GB GB available, ~25-30 GB required)" \
+		"The static recompilation, intermediate object files, and asset baking require at least 25 GB free." \
+		"Please free up disk space and run the installer again."
+fi
+
 BUILD_WORK="$BUILDER_DIR/work"
+# If a previous build was interrupted or failed, clear stale LTO cache and corrupt binary
+if [ -d "$BUILD_WORK" ] && [ ! -f "$BUILD_WORK/gtaiv" ]; then
+	rm -rf "$BUILD_WORK/lto-cache" "$BUILD_WORK/gtaiv" 2>/dev/null || true
+fi
 mkdir -p "$BUILD_WORK"
 
 BUILD_SRC="$ASSET_SRC"
@@ -549,6 +576,10 @@ if [ "$FANCY" = yes ]; then
 	if [ "${rc:-0}" -ne 0 ]; then
 		printf '\r  %s✘%s Build failed\033[K\n' "$RED" "$RESET"
 		tail -n 25 "$BUILD_OUTPUT" >&2
+		if grep -qi "The file .*gtaiv.* doesn.t exist" "$BUILD_OUTPUT" 2>/dev/null; then
+			printf '\n  %sTip:%s Linking failed. This usually indicates Apple Clang ran out of memory or disk space during Link-Time Optimization (ThinLTO), or intermediate files from an interrupted run were corrupted.\n' "$GOLD" "$RESET" >&2
+			printf '  Try closing heavy background apps, running %srm -rf /tmp/maciv_builder%s, and rebuilding.\n\n' "$BOLD" "$RESET" >&2
+		fi
 		die "engine compilation failed"
 	else
 		printf '\r  %s✔%s Native Metal engine compiled successfully\033[K\n' "$GREEN" "$RESET"

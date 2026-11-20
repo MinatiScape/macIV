@@ -84,11 +84,17 @@ if [ ! -f "$PATCH_FILE" ]; then
     die "Patch file ce_to_1080.patch not found in $SCRIPT_DIR"
 fi
 
+LEGACY_1070_SHA="ab21c0d90d2ca1c697785aca9dcf44635e1f8d48aa0df1d737e9190bddf0cb4c"
+
 info "Detected input version (SHA-256: $CURRENT_SHA)"
 if [ "$CURRENT_SHA" = "$STEAM_CE_SHA" ]; then
     info "Recognized standard Steam Complete Edition (v1.2.0.x)."
+elif [ "$CURRENT_SHA" = "$LEGACY_1070_SHA" ]; then
+    die "Detected GTA IV v1.0.7.0 (SHA-256: $CURRENT_SHA)." \
+        "The automatic delta patch converts modern Steam Complete Edition (v1.2.0.x) to clean v1.0.8.0." \
+        "Please update to v1.0.8.0 using Rockstar's Title Update 8 (GTAIV_Patch_8.exe) or verify files on Steam."
 else
-    warn "Unrecognized Complete Edition build, attempting patch conversion..."
+    warn "Unrecognized GTAIV.exe build (SHA-256: $CURRENT_SHA), attempting patch conversion..."
 fi
 
 TMP_OUT="$(mktemp -t gtaiv_patched.XXXXXX)"
