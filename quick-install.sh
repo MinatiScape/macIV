@@ -547,7 +547,6 @@ printf '  %sCompiling game code via Apple Clang (this takes ~5-15 min)...%s\n' "
 compile_engine() {
 	mkdir -p "$BUILDER_APP/Contents/Resources/kit/app/Liberty Pro Max.app/Contents/MacOS"
 	mkdir -p "$TMP/Liberty Pro Max.app/Contents/MacOS"
-	mkdir -p "/Applications/Liberty Pro Max.app/Contents/MacOS" 2>/dev/null || true
 	BUILDER_WORK="$BUILD_WORK" BUILDER_DEST="$TMP" \
 		"$BUILDER_APP/Contents/MacOS/Builder" --build "$BUILD_SRC" > "$BUILD_OUTPUT" 2>&1
 }
@@ -557,7 +556,6 @@ recover_built_engine() {
 		local tmpl="$BUILDER_APP/Contents/Resources/kit/app/Liberty Pro Max.app"
 		local dest="$TMP/Liberty Pro Max.app"
 		[ ! -d "$dest" ] && [ -d "$tmpl" ] && cp -R "$tmpl" "$dest" 2>/dev/null || true
-		[ ! -d "$dest" ] && [ -d "/Applications/Liberty Pro Max.app" ] && cp -R "/Applications/Liberty Pro Max.app" "$dest" 2>/dev/null || true
 		if [ -d "$dest" ]; then
 			mkdir -p "$dest/Contents/MacOS"
 			cp "$BUILD_WORK/gtaiv" "$dest/Contents/MacOS/gtaiv"
