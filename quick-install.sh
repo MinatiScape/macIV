@@ -400,6 +400,9 @@ fi
 find "$BUILDER_DIR/extracted" -name "._*" -delete 2>/dev/null || true
 xattr -cr "$BUILDER_DIR/extracted" 2>/dev/null || true
 
+# Ensure Contents/MacOS exists in the template bundle so Builder's post-link packaging does not fail
+mkdir -p "$BUILDER_APP/Contents/Resources/kit/app/Liberty Pro Max.app/Contents/MacOS"
+
 # Apply Complete Edition script compatibility patch (prevents SCRT70 / 747217401 when pulling out phone)
 MANIFEST="$BUILDER_APP/Contents/Resources/kit/manifest/gtaiv.manifest"
 EPISODES_CPP="$BUILDER_APP/Contents/Resources/kit/src/episodes.cpp"
@@ -542,8 +545,27 @@ BUILD_OUTPUT="$TMP/builder.log"
 printf '  %sCompiling game code via Apple Clang (this takes ~5-15 min)...%s\n' "$DIM" "$RESET"
 
 compile_engine() {
+	mkdir -p "$BUILDER_APP/Contents/Resources/kit/app/Liberty Pro Max.app/Contents/MacOS"
+	mkdir -p "$TMP/Liberty Pro Max.app/Contents/MacOS"
+	mkdir -p "/Applications/Liberty Pro Max.app/Contents/MacOS" 2>/dev/null || true
 	BUILDER_WORK="$BUILD_WORK" BUILDER_DEST="$TMP" \
 		"$BUILDER_APP/Contents/MacOS/Builder" --build "$BUILD_SRC" > "$BUILD_OUTPUT" 2>&1
+}
+
+recover_built_engine() {
+	if [ -f "$BUILD_WORK/gtaiv" ]; then
+		local tmpl="$BUILDER_APP/Contents/Resources/kit/app/Liberty Pro Max.app"
+		local dest="$TMP/Liberty Pro Max.app"
+		[ ! -d "$dest" ] && [ -d "$tmpl" ] && cp -R "$tmpl" "$dest" 2>/dev/null || true
+		[ ! -d "$dest" ] && [ -d "/Applications/Liberty Pro Max.app" ] && cp -R "/Applications/Liberty Pro Max.app" "$dest" 2>/dev/null || true
+		if [ -d "$dest" ]; then
+			mkdir -p "$dest/Contents/MacOS"
+			cp "$BUILD_WORK/gtaiv" "$dest/Contents/MacOS/gtaiv"
+			chmod +x "$dest/Contents/MacOS/gtaiv"
+			return 0
+		fi
+	fi
+	return 1
 }
 
 if [ "$FANCY" = yes ]; then
@@ -574,13 +596,18 @@ if [ "$FANCY" = yes ]; then
 	wait "$cleaner_pid" 2>/dev/null || true
 	printf '\033[?25h'
 	if [ "${rc:-0}" -ne 0 ]; then
-		printf '\r  %s✘%s Build failed\033[K\n' "$RED" "$RESET"
-		tail -n 25 "$BUILD_OUTPUT" >&2
-		if grep -qi "The file .*gtaiv.* doesn.t exist" "$BUILD_OUTPUT" 2>/dev/null; then
-			printf '\n  %sTip:%s Linking failed. This usually indicates Apple Clang ran out of memory or disk space during Link-Time Optimization (ThinLTO), or intermediate files from an interrupted run were corrupted.\n' "$GOLD" "$RESET" >&2
-			printf '  Try closing heavy background apps, running %srm -rf /tmp/maciv_builder%s, and rebuilding.\n\n' "$BOLD" "$RESET" >&2
+		if recover_built_engine; then
+			printf '\r  %s✔%s Recovered gtaiv binary into app bundle successfully\033[K\n' "$GREEN" "$RESET"
+			rc=0
+		else
+			printf '\r  %s✘%s Build failed\033[K\n' "$RED" "$RESET"
+			tail -n 25 "$BUILD_OUTPUT" >&2
+			if grep -qi "The file .*gtaiv.* doesn.t exist" "$BUILD_OUTPUT" 2>/dev/null; then
+				printf '\n  %sTip:%s Linking failed. This usually indicates Apple Clang ran out of memory or disk space during Link-Time Optimization (ThinLTO), or intermediate files from an interrupted run were corrupted.\n' "$GOLD" "$RESET" >&2
+				printf '  Try closing heavy background apps, running %srm -rf /tmp/maciv_builder%s, and rebuilding.\n\n' "$BOLD" "$RESET" >&2
+			fi
+			die "engine compilation failed"
 		fi
-		die "engine compilation failed"
 	else
 		printf '\r  %s✔%s Native Metal engine compiled successfully\033[K\n' "$GREEN" "$RESET"
 	fi
@@ -594,7 +621,16 @@ else
 	) &
 	cleaner_pid=$!
 	disown "$cleaner_pid" 2>/dev/null || true
-	compile_engine || { kill "$cleaner_pid" 2>/dev/null || true; wait "$cleaner_pid" 2>/dev/null || true; tail -n 25 "$BUILD_OUTPUT"; die "engine compilation failed"; }
+	if ! compile_engine; then
+		kill "$cleaner_pid" 2>/dev/null || true
+		wait "$cleaner_pid" 2>/dev/null || true
+		if recover_built_engine; then
+			ok "Recovered gtaiv binary into app bundle successfully"
+		else
+			tail -n 25 "$BUILD_OUTPUT"
+			die "engine compilation failed"
+		fi
+	fi
 	kill "$cleaner_pid" 2>/dev/null || true
 	wait "$cleaner_pid" 2>/dev/null || true
 fi
