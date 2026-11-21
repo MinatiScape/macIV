@@ -645,16 +645,22 @@ mkdir -p "$APP/Contents/Resources"
 
 # Inject our native launcher & metadata
 RAW_BASE="https://raw.githubusercontent.com/tanmayisdumb/macIV/main"
-if [ -f "$SCRIPT_DIR/src/macIV" ]; then
+if [ -f "$SCRIPT_DIR/bin/macIV" ]; then
+	cp "$SCRIPT_DIR/bin/macIV" "$APP/Contents/MacOS/macIV"
+elif [ -f "$SCRIPT_DIR/src/macIV" ]; then
 	cp "$SCRIPT_DIR/src/macIV" "$APP/Contents/MacOS/macIV"
 else
 	MACIV_C="$TMP/macIV.c"
 	if [ -f "$SCRIPT_DIR/src/macIV.c" ]; then
 		cp "$SCRIPT_DIR/src/macIV.c" "$MACIV_C"
 	else
-		curl -fsSL "$RAW_BASE/src/macIV.c" -o "$MACIV_C"
+		curl -fsSL "$RAW_BASE/src/macIV.c" -o "$MACIV_C" 2>/dev/null || true
 	fi
-	clang -O3 -arch arm64 -mmacosx-version-min=14.0 -framework CoreFoundation -lz "$MACIV_C" -o "$APP/Contents/MacOS/macIV"
+	if which clang >/dev/null 2>&1 && [ -f "$MACIV_C" ]; then
+		clang -O3 -arch arm64 -mmacosx-version-min=14.0 -framework CoreFoundation -lz "$MACIV_C" -o "$APP/Contents/MacOS/macIV"
+	else
+		curl -fsSL "$RAW_BASE/bin/macIV" -o "$APP/Contents/MacOS/macIV"
+	fi
 fi
 
 # Bundle savegame repair tool
