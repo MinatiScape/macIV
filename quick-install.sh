@@ -654,7 +654,7 @@ else
 	else
 		curl -fsSL "$RAW_BASE/src/macIV.c" -o "$MACIV_C"
 	fi
-	clang -O3 -arch arm64 -framework CoreFoundation -lz "$MACIV_C" -o "$APP/Contents/MacOS/macIV"
+	clang -O3 -arch arm64 -mmacosx-version-min=14.0 -framework CoreFoundation -lz "$MACIV_C" -o "$APP/Contents/MacOS/macIV"
 fi
 
 # Bundle savegame repair tool

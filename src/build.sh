@@ -12,7 +12,7 @@ echo "==> Building macIV..."
 
 # 1. Compile native launcher
 echo "--> Compiling native launcher (macIV)..."
-clang -O3 -arch arm64 -Wall -Wextra -framework CoreFoundation -lz "$SCRIPT_DIR/macIV.c" -o "$SCRIPT_DIR/macIV"
+clang -O3 -arch arm64 -mmacosx-version-min=14.0 -Wall -Wextra -framework CoreFoundation -lz "$SCRIPT_DIR/macIV.c" -o "$SCRIPT_DIR/macIV"
 
 # 2. Build Retina icon if not present
 ICON_PATH="$SCRIPT_DIR/macIV.icns"
